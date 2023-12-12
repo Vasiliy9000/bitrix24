@@ -1,0 +1,91 @@
+protected function changeAssigned(): Result
+    {
+        $docs = [
+            142, // 'Декларации'
+            148, // 'Отказные'
+            156, // 'Сертификаты'
+            164, // 'Протоколы'
+            191, // 'Техотдел'
+            132, // 'Доброволки'
+            //31,  // 'Счет' отключено по просьбе цтс
+        ];
+
+        $request = []; // Массив для набора данных из каждого типа бизнес процесса
+        foreach ($docs as $value) { // переберем все типы смарт процессов
+            $assigned = 1;
+            if (isset($this->data->_get['assigned'])) {
+                [$tmp, $deal_id] = explode('_', $this->data->_post['document_id'][2]);
+                [$tmp, $assigned] = explode('_', $this->data->_get['assigned']);
+                $request['order' . $value] = [
+                    'method' => 'crm.item.list',
+                    'params' => [
+                        'entityTypeId' => $value, // было static::gcorder_entityTypeId
+                        'select' => [
+                            '*',
+                        ],
+                        'filter' => [
+                            'parentId2' => $deal_id,
+                        ],
+                    ],
+                ];
+            }
+            else {
+                $request = [
+                    'deal'  => [
+                        'method' => 'crm.deal.get',
+                        'params' =>
+                            [
+                                'id' => $this->data->_post['data']['FIELDS']['ID'],
+                            ],
+                    ],
+                    'order' => [
+                        'method' => 'crm.item.list',
+                        'params' => [
+                            'entityTypeId' => $value, // было static::gcorder_entityTypeId
+                            'select'       => [
+                                '*',
+                            ],
+                            'filter'       => [
+                                'parentId2' => '$result[deal][ID]',
+                            ],
+                        ],
+                    ],
+                ];
+
+            }
+        }
+        $result = CRest::callBatch($request);
+
+        if (isset($result['result']['result']['deal']['ASSIGNED_BY_ID'])) {
+            $assigned = $result['result']['result']['deal']['ASSIGNED_BY_ID'];
+        }
+
+        $res = []; // Массив для набора данных из каждого типа бизнес процесса
+        foreach ($docs as $key) {
+            foreach ($result['result']['result']['order'.$key]['items'] as $order) {
+                if ($assigned !== $order['assignedById']) {
+
+                    $observers = $order['observers'];
+                    $observers[] = $assigned; // добавим ответсвенного в наблюдатели
+
+                    $res = CRest::call('crm.item.update', [ //Метод обновит элемент с идентификатором id смарт-процесса с идентификатором entityTypeId.
+                        'entityTypeId' => $key,
+                        'id' => $order['id'],
+                        'fields' => [
+                            'observers' => $observers, // Ставим ответсвенного в СП наблюдателем
+                        ],
+                        'params' => [
+                            'REGISTER_SONET_EVENT' => 'N',
+                        ]
+                    ]);
+                }
+            }
+        }
+        $result = CRest::callBatch($res); //
+        CRest::setLog([
+            '$res' => $res,
+        ],
+            'changeAssigned');
+
+        return $this->result->set($result) ?? $this->result->set(['ok']);
+    }
