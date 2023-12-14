@@ -1,0 +1,39 @@
+protected function getValuteCourse(): Result
+    {
+        $chatbot = $this->data->chatbot ?? 'sneakerstuff';
+        if (!$this->_checkParamDefined('valute', 'Valute')) {
+            return $this->result;
+        }
+        //$result = CRest::call('crm.currency.get', ['id' => $this->data->valute]);
+        $result = CRest::call('lists.element.get', [
+            'IBLOCK_TYPE_ID' => 'lists',
+            'IBLOCK_ID' => '50',
+            'FILTER'=> ['PROPERTY_154' => $chatbot,
+                ],
+        ]);
+        $result = reset($result['result'][0]['PROPERTY_156']); // поле с курсом в битриксе
+        $result = (float)$result; // убрали избыточный период
+        return $this->result->set(['AMOUNT' => $result] ?? []);
+    }
+    protected function getShipingPrice(): Result
+    {
+        $chatbot = $this->data->chatbot ?? 'sneakerstuff'; // выбираем чат бота.
+        $typeShiping = $this->data->typeShiping ?? 0; // Если значение не передасться, то в чат боте будет ошибка при запросе, тк в ботмаме будет умножение на 0
+        if (!$this->_checkParamDefined('typeShiping', 'TypeShiping')) { // назвал по аналогии с примером Typeshiping
+            return $this->result;
+        }
+        $result = CRest::call('lists.element.get', [
+            'IBLOCK_TYPE_ID' => 'lists',
+            'IBLOCK_ID' => '56', // номер списка в листах бизнеспроцессов ?
+            'FILTER'=> [
+                'PROPERTY_164' => $chatbot, // поле где написано какой чатбот
+                'NAME' => $typeShiping,
+            ],
+        ]);
+        $result = array(
+            reset($result['result'][0]['PROPERTY_162']), // поле со стоимостью в битриксе - PROPERTY_162[327296][VALUE]
+            reset($result['result'][0]['PROPERTY_168']), // с оптовой стоимостью
+            reset($result['result'][0]['PROPERTY_166'])  // такса
+        );
+        return $this->result->set(['SHIPRICE' => $result] ?? []); // возвращаем цену доставки
+    }
