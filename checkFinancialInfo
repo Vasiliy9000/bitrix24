@@ -1,0 +1,84 @@
+protected function checkFinancialInfo(): Result // для сп
+    {
+        if (!$this->_checkGetParamDefined('deal', 'Deal ID') ||
+			!$this->_checkGetParamDefined('entityType', 'Entity Type') ||
+			!$this->_checkGetParamDefined('ID', 'Smart ID')
+        ) {
+            return $this->result;
+        }
+
+		$entityType = $this->data->_get['entityType'];
+		$entityTypeId = static::entityTypeIds[$entityType];
+		$entityFields = static::entityFields[$entityType];
+		$smartId = $this->data->_get['ID'];
+
+		$smart = CRest::callBatch([
+			'item' => [
+				'method' => 'crm.item.get',
+				'params' =>
+					[
+						'entityTypeId' => $entityTypeId,
+						'id' => $smartId,
+					],
+			],
+			'fields' => [
+				'method' => 'crm.item.fields',
+				'params' => [
+					'entityTypeId' => $entityTypeId,
+				],
+			],
+			'deal_fields' => [
+				'method' => 'crm.deal.fields',
+				'params' => [
+				],
+			],
+		]);
+
+		$invoice_status      = '';
+		$invoice_status_code = $this->deal['UF_CRM_1683187602109'];
+		foreach ($smart['result']['result']['deal_fields']['UF_CRM_1683187602109']['items'] as $item) {
+			if ($item['ID'] === $invoice_status_code) {
+				$invoice_status = $item['VALUE'];
+			}
+		}
+
+		$invoice = $this->deal['UF_CRM_1683542942'];
+		$invoice_num = $this->deal['UF_CRM_1675157067513'];
+		$invoice_date = $this->deal['UF_CRM_1675157079908'];
+		// $invoice_status;
+		$invoice_company = $this->deal['UF_CRM_1686146691'];
+
+		$sp_invoice_status = '';
+		$sp_invoice_status_code = $smart['result']['result']['item']['item'][$entityFields['sp_invoice_status']];
+		foreach ($smart['result']['result']['fields']['fields'][$entityFields['sp_invoice_status']]['items'] as $item) {
+			if ($item['ID'] === $sp_invoice_status_code) {
+				$sp_invoice_status = $item['VALUE'];
+			}
+		}
+
+		$sp_invoice = $smart['result']['result']['item']['item'][static::entityFields[$entityType]['sp_invoice']];
+		$sp_invoice_num = $smart['result']['result']['item']['item'][static::entityFields[$entityType]['sp_invoice_num']];
+		$sp_invoice_date = $smart['result']['result']['item']['item'][static::entityFields[$entityType]['sp_invoice_date']];
+		// $sp_invoice_status = $smart['result']['result']['item']['item'][static::entityFields[$entityType]['sp_invoice_status']];
+		$sp_invoice_company = $smart['result']['result']['item']['item'][static::entityFields[$entityType]['sp_invoice_company']];
+
+		if ($invoice !== $sp_invoice or
+			$invoice_num !== $sp_invoice_num or
+			$invoice_date !== $sp_invoice_date or
+			$invoice_status !== $sp_invoice_status or
+			$invoice_company !== $sp_invoice_company) {
+			$entity_id = $entityTypeId . '_' . $smartId;
+
+			$parameters = [
+				'invoice_number' => $this->deal['UF_CRM_1675157067513'],
+				'invoice_id'     => $this->deal['UF_CRM_1683542942'],
+				'invoice_date'   => $this->deal['UF_CRM_1675157079908'],
+				'invoice_ul'     => $this->deal['UF_CRM_1686146691'],
+				'invoice_status' => $invoice_status,
+			];
+
+			Lib::runBizProc('smart', $entity_id, static::bp_ids[$entityTypeId], $parameters);
+		}
+
+		return $this->result->set([]);
+    }
