@@ -1,0 +1,134 @@
+protected function getInitialCompanyInfo(): Result
+    {
+        $companyId = $this->deal['COMPANY_ID'];
+        //Ищем значения полей в карточке компании
+        $companyFields = CRest::call(
+            'crm.company.get',
+            [
+                'id' => $companyId,
+                'select' => ['*'], // id сделки UF_CRM_1692183373471
+            ]);
+
+            if (empty($companyFields['result']['UF_CRM_1689264582741'])) {
+                $companyFields['result']['UF_CRM_1689264582741'] = $this->deal['UF_CRM_1690455096546']; // дата привлечения клиента
+            }
+            if (empty($companyFields['result']['UF_CRM_1669724708'])) {
+                $companyFields['result']['UF_CRM_1669724708'] = $this->deal['SOURCE_ID']; // источник
+            }
+            if (empty($companyFields['result']['UF_CRM_1684419866'])) {
+                $companyFields['result']['UF_CRM_1684419866'] = $this->deal['UF_CRM_64662095EA6FC']; // канал продаж
+            }
+            if (empty($companyFields['result']['UF_CRM_1684419906'])) {
+                $companyFields['result']['UF_CRM_1684419906'] = $this->deal['UF_CRM_6466209613577']; // конверсия
+            }
+
+        $result = CRest::call(
+            'crm.company.update',
+            [
+                'id' => $companyId,
+                'fields' => [
+                    'UF_CRM_1689264582741' => $companyFields['result']['UF_CRM_1689264582741'],
+                    'UF_CRM_1669724708' => $companyFields['result']['UF_CRM_1669724708'],
+                    'UF_CRM_1684419866' => $companyFields['result']['UF_CRM_1684419866'],
+                    'UF_CRM_1684419906' => $companyFields['result']['UF_CRM_1684419906'],
+                ],
+            ]);
+        return $this->result->set([$result]);
+    }
+    protected function updateContactInProtocolDeclaration(): Result
+    {
+        if (!$this->_checkGetParamDefined('sp', 'Smart process')) { // проверка на приход значения
+            return $this->result;
+        }
+        if (!$this->_checkGetParamDefined('dec', 'Declaration')) {
+            return $this->result;
+        }
+
+        $sp = $this->data->_get['sp'];
+        $dec = $this->data->_get['dec'];
+
+        $protocolData = CRest::call( // Получаем данные протокола
+            'crm.item.get',
+            [
+                'entityTypeId' => static::entityTypeIds['Протоколы'],
+                'id' => $sp // id протокола
+            ]
+        );
+
+        $companyData = CRest::call(
+            'crm.company.get',
+            [
+                    'id' => $protocolData['result']['item']['companyId'],
+            ]
+        );
+
+        $companyFields = CRest::call(
+            'crm.company.fields',
+            []
+        );
+
+        $itemFieldsProtocol = CRest::call(
+            'crm.item.fields',
+            [
+                'entityTypeId' => static::entityTypeIds['Протоколы'],
+            ]
+        );
+
+        $itemFieldsDeclaration = CRest::call(
+            'crm.item.fields',
+            [
+                'entityTypeId' => static::entityTypeIds['Декларации'],
+            ]
+        );
+
+        // находим по id содержимое поля правовая форма в карточке фирмы
+        foreach ($companyFields['result']['UF_CRM_1675171175635']['items'] as $value) {
+            if ($value['ID'] === $companyData['result']['UF_CRM_1675171175635']) { // если id равно сохраняем название
+               $legalForm = $value['VALUE'];
+            }
+        }
+
+        // находим id по значению содержимого поля правовая форма в карточке протокола
+        foreach ($itemFieldsProtocol['result']['fields']['ufCrm5_1683357779193']['items'] as $value) {
+            if ($value['VALUE'] === $legalForm) { // по названию формы берем id
+                $legalFormID = $value['ID'];
+            }
+        }
+
+        CRest::call('crm.item.update', [ //Метод обновит элемент с идентификатором id смарт-процесса с идентификатором entityTypeId.
+            'entityTypeId' => static::entityTypeIds['Протоколы'],
+            'id' => $sp, // id протокола
+            'fields' => [
+                'ufCrm11_1689347427397' => $companyData['result']['UF_CRM_4_IF_INN'], // инн
+                'ufCrm5_1683357800860' => $companyData['result']['ADDRESS_2'], // Адресс производства
+                'ufCrm11_1689347419133' => $companyData['result']['UF_CRM_1678111994064'], // название  заявителя
+                'ufCrm5_1683357779193' =>  $legalFormID // правовая форма
+            ],
+            'params' => [
+                'REGISTER_SONET_EVENT' => 'N',
+            ]
+        ]);
+
+        //находим id по значению value содержимого поля правовая форма в карточке Декларации
+        foreach ($itemFieldsDeclaration['result']['fields']['ufCrm7_1683290055000']['items'] as $value) { //
+            if ($value['VALUE'] === $legalForm) { // где прававое название совпадет тот id и возьмем
+                $legalFormID = $value['ID'];
+            }
+        }
+
+        CRest::call('crm.item.update', [ //Метод обновит элемент с идентификатором id смарт-процесса с идентификатором entityTypeId.
+            'entityTypeId' => static::entityTypeIds['Декларации'],
+            'id' => $dec, // id декларации
+            'fields' => [
+                'ufCrm7_1683289930215' => $companyData['result']['ADDRESS_2'], // Адресс производства
+                'ufCrm11_1689347419133' => $companyData['result']['UF_CRM_1678111994064'], // название  заявителя
+                'ufCrm7_1683290055000' => $legalFormID  // правовая форма
+            ],
+            'params' => [
+                'REGISTER_SONET_EVENT' => 'N',
+            ]
+        ]);
+
+        $result = $sp;
+        return $this->result->set([$result]);
+    }
