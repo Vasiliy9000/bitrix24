@@ -1,0 +1,489 @@
+<?php
+
+namespace Advina\appSPListsEdit;
+
+use Advina\CRest;
+use PhpOffice\PhpWord\Exception\CopyFileException;
+use PhpOffice\PhpWord\Exception\CreateTemporaryFileException;
+use PhpOffice\PhpWord\Exception\Exception;
+use PhpOffice\PhpWord\TemplateProcessor;
+
+require_once __DIR__ . '/../../vendor/autoload.php';
+if (empty($_SERVER["DOCUMENT_ROOT"])) $_SERVER["DOCUMENT_ROOT"] = dirname(__DIR__, 2);
+
+require_once(__DIR__ . '/settings.php');
+
+class App
+{
+    const CERT_ENTITY_TYPE_ID = 156; // ид сушности (сертификаты)
+    const DECLARATION_ENTITY_TYPE_ID = 142;
+    const EXPORT_TEMP_FILE = __DIR__ . '/docum.docx';
+
+    /**
+     * @throws CopyFileException
+     * @throws Exception
+     * @throws CreateTemporaryFileException
+     */
+    public static function exportWordProduct(): string
+    {
+        $date = date("d.m.y");
+        header("Cache-Control: public"); // needed for internet explorer
+        header("Content-Type: application/vnd.ms-excel");
+        header("Content-Transfer-Encoding: Binary");
+        header("Content-Disposition: attachment; filename=product-".$date.".docx");
+        ob_start();
+
+        $document_id = $_REQUEST['doc_id'] ?? 0;
+        $listProduct = CRest::callList('lists.element.get',[
+            'IBLOCK_TYPE_ID'=>'lists',
+            'IBLOCK_ID'=>67,
+            'FILTER' => [
+                '=PROPERTY_293' =>$document_id,
+            ]
+        ]);
+        // Получили идентификатор смарт-процесса и id документа
+        $result = CRest::call(
+            'crm.item.get',
+            [
+                'entityTypeId' => static::CERT_ENTITY_TYPE_ID,
+                'id' => $document_id,
+            ]
+        );
+
+        // Получаем реквизиты
+        $company = $result['result']['item']['mycompanyId'];
+        $result = CRest::call(
+            'crm.requisite.list',
+            [
+                'order' => ['ID' => 'ASC'],
+                'filter' =>
+                    [
+                        'ENTITY_TYPE_ID' => 4,
+                        'ENTITY_ID' => $company,
+                    ],
+                'select' => ['*', 'UF_*']
+            ]
+        );
+
+        $CompanyRequisiteUfCrm1675166054 = '';
+        $CompanyRequisiteUfCrm1683443820 = '';
+        foreach ($result['result'] as $k => $value) {
+            if (!in_array($result['result'][$k]['UF_CRM_1675166054'], [NULL, ''], true)) {
+                $CompanyRequisiteUfCrm1675166054 = $result['result'][$k]['UF_CRM_1675166054'];
+            }
+            elseif (!in_array($result['result'][$k]['UF_CRM_1683443820'], [NULL, ''], true)) {
+                $CompanyRequisiteUfCrm1683443820 = $result['result'][$k]['UF_CRM_1683443820'];
+            }
+            if(!empty($CompanyRequisiteUfCrm1675166054) || !empty($CompanyRequisiteUfCrm1683443820)) {
+                break;
+            }
+        }
+
+        if (!empty($_SERVER['REQUEST_METHOD'] === 'POST')) {
+            $source = __DIR__ . '/products.docx';
+            $templateProcessor = new TemplateProcessor($source);
+            $templateProcessor->setValue('serverName', realpath(__DIR__));
+            $templateProcessor->setValue('numDoc', '1'); // номер в документе
+            $templateProcessor->setValue('CompanyRequisiteUfCrm1675166054', $CompanyRequisiteUfCrm1675166054);
+            $templateProcessor->setValue('CompanyRequisiteUfCrm1683443820', $CompanyRequisiteUfCrm1683443820);
+
+            $listElements = [];
+
+            foreach ($listProduct['result'] as $item) {  // проверяем есть ли поле 291?
+                if(!empty($item['PROPERTY_291'])){
+                    $codeArray = reset($item['PROPERTY_291']);
+                } else {
+                    $codeArray = '';
+                }
+                $nameArray = reset($item['PROPERTY_297']);
+                $listElements[] = [
+                    $codeArray,
+                    $nameArray,
+                ];
+            }
+
+            $templateProcessor->cloneRow('rowValue', count($listElements));
+
+            foreach ($listElements as $k => $element) {
+                $k2 = $k + 1;
+                $templateProcessor->setValue('rowValue#'.$k2, $element[0]);
+                $templateProcessor->setValue('rowNumber#'.$k2, $element[1]);
+            }
+
+            $templateProcessor->saveAs(static::EXPORT_TEMP_FILE);
+            ob_clean();
+            $orderDeals = readfile(static::EXPORT_TEMP_FILE);
+            $r = ob_get_clean();
+            unlink(static::EXPORT_TEMP_FILE);
+            header("Content-Length:" . $orderDeals);
+            ob_clean();
+            echo $r;
+            ob_end_flush();
+        }
+        return json_encode(['status'=>true]);
+    }
+
+    /**
+     * @throws CopyFileException
+     * @throws Exception
+     * @throws CreateTemporaryFileException
+     */
+    public static function exportWordPlacement(): string
+    {
+        $date = date("d.m.y");
+        header("Cache-Control: public"); // needed for internet explorer
+        header("Content-Type: application/vnd.ms-excel");
+        header("Content-Transfer-Encoding: Binary");
+        header("Content-Disposition: attachment; filename=placement-".$date.".docx");
+        ob_start();
+
+        $document_id = $_REQUEST['doc_id'] ?? 0;
+        $listProduct = CRest::callList('lists.element.get',[
+            'IBLOCK_TYPE_ID'=>'lists',
+            'IBLOCK_ID'=>69,
+            'FILTER' => [
+                '=PROPERTY_295'=>$document_id,
+            ]
+        ]);
+
+        // Получили идентификатор смарт-процесса и id документа
+        $result = CRest::call(
+            'crm.item.get',
+            [
+                'entityTypeId' => static::CERT_ENTITY_TYPE_ID,
+                'id' => $document_id,
+            ]
+        );
+
+        // Получаем реквизиты
+        $company = $result['result']['item']['mycompanyId'];
+
+        $result = CRest::call(
+            'crm.requisite.list',
+            [
+                'order' => ['ID' => 'ASC'],
+                'filter' =>
+                    [
+                        'ENTITY_TYPE_ID' => 4,
+                        'ENTITY_ID' => $company,
+                    ],
+                'select' => ['*', 'UF_*']
+            ]
+        );
+
+        $CompanyRequisiteUfCrm1675166054 = '';
+        $CompanyRequisiteUfCrm1683443820 = '';
+        foreach ($result['result'] as $k => $value) {
+            if (!in_array($result['result'][$k]['UF_CRM_1675166054'], [NULL, ''], true)) {
+                $CompanyRequisiteUfCrm1675166054 = $result['result'][$k]['UF_CRM_1675166054'];
+            }
+            elseif (!in_array($result['result'][$k]['UF_CRM_1683443820'], [NULL, ''], true)) {
+                $CompanyRequisiteUfCrm1683443820 = $result['result'][$k]['UF_CRM_1683443820'];
+            }
+            if(!empty($CompanyRequisiteUfCrm1675166054) || !empty($CompanyRequisiteUfCrm1683443820)) {
+                break;
+            }
+        }
+
+        if (!empty($_SERVER['REQUEST_METHOD'] === 'POST')) {
+            $source = __DIR__ . '/places.docx';
+            $templateProcessor = new TemplateProcessor($source);
+
+            if ($_REQUEST['enabledProduct'] === 'true') {
+                $templateProcessor->setValue('numDoc', '2');
+            } else {
+                $templateProcessor->setValue('numDoc', '1');
+            }
+
+            $templateProcessor->setValue('serverName', realpath(__DIR__));
+            $templateProcessor->setValue('CompanyRequisiteUfCrm1675166054', $CompanyRequisiteUfCrm1675166054);
+            $templateProcessor->setValue('CompanyRequisiteUfCrm1683443820', $CompanyRequisiteUfCrm1683443820);
+
+            $listElements = [];
+
+            foreach ($listProduct['result'] as $item) {
+                if(!empty($item['PROPERTY_289'])){
+                    $nameArray = reset($item['PROPERTY_289']); // поле адреса
+                } else {
+                    $nameArray = '';
+                }
+                $codeArray = reset($item['PROPERTY_299']);
+                $listElements[] = [
+                    $codeArray,
+                    $nameArray,
+                ];
+            }
+
+            $templateProcessor->cloneRow('rowValue', count($listElements));
+
+            foreach ($listElements as $k => $element) {
+                $k2 = $k + 1;
+                $templateProcessor->setValue('rowValue#'.$k2, $element[0]);
+                $templateProcessor->setValue('rowNumber#'.$k2, $element[1]);
+            }
+
+            $templateProcessor->saveAs(static::EXPORT_TEMP_FILE);
+
+            ob_clean();
+            $orderDeals = readfile('docum.docx');
+            $r = ob_get_clean();
+            unlink('docum.docx');
+            header("Content-Length:" . $orderDeals);
+            ob_clean();
+            echo $r;
+            ob_end_flush();
+        }
+        return json_encode(['status'=>true]);
+    }
+    public static function exportWordDeclaration(): string
+    {
+        $date = date("d.m.y");
+        header("Cache-Control: public"); // needed for internet explorer
+        header("Content-Type: application/vnd.ms-excel");
+        header("Content-Transfer-Encoding: Binary");
+        header("Content-Disposition: attachment; filename=Приложение к декларации о соответствии-".$date.".docx");
+        ob_start();
+
+        $document_id = $_REQUEST['doc_id'] ?? 0;
+        $listProduct = CRest::callList('lists.element.get',[
+            'IBLOCK_TYPE_ID'=>'lists',
+            'IBLOCK_ID'=>101, // Строки писложения с декларациями
+            'FILTER' => [
+                 '=PROPERTY_379' => $document_id, // Поле добавленое через crm которое взраимодействует с crm декларации
+            ]
+        ]);
+        // Получили идентификатор смарт-процесса и id документа
+        $result = CRest::call(
+            'crm.item.get',
+            [
+                'entityTypeId' => static::DECLARATION_ENTITY_TYPE_ID,
+                'id' => $document_id,
+            ]
+        );
+        // Получаем реквизиты
+        $company = $result['result']['item']['mycompanyId'];
+        $result = CRest::call(
+            'crm.requisite.list',
+            [
+                'order' => ['ID' => 'ASC'],
+                'filter' =>
+                    [
+                        'ENTITY_TYPE_ID' => 4,
+                        'ENTITY_ID' => $company,
+                    ],
+                'select' => ['*', 'UF_*']
+            ]
+        );
+
+        $CompanyRequisiteUfCrm1675166054 = '';
+        $CompanyRequisiteUfCrm1683443820 = '';
+        foreach ($result['result'] as $k => $value) {
+            if (!in_array($result['result'][$k]['UF_CRM_1675166054'], [NULL, ''], true)) {
+                $CompanyRequisiteUfCrm1675166054 = $result['result'][$k]['UF_CRM_1675166054'];
+            }
+            elseif (!in_array($result['result'][$k]['UF_CRM_1683443820'], [NULL, ''], true)) {
+                $CompanyRequisiteUfCrm1683443820 = $result['result'][$k]['UF_CRM_1683443820'];
+            }
+            if(!empty($CompanyRequisiteUfCrm1675166054) || !empty($CompanyRequisiteUfCrm1683443820)) {
+                break;
+            }
+        }
+
+        if (!empty($_SERVER['REQUEST_METHOD'] === 'POST')) {
+            $source = __DIR__ . '/conformityDeclaration.docx';
+            $templateProcessor = new TemplateProcessor($source);
+            $templateProcessor->setValue('serverName', realpath(__DIR__));
+            $templateProcessor->setValue('CompanyRequisiteUfCrm1675166054', $CompanyRequisiteUfCrm1675166054);
+            $templateProcessor->setValue('CompanyRequisiteUfCrm1683443820', $CompanyRequisiteUfCrm1683443820); //фио директора
+
+            $listElements = [];
+
+            foreach ($listProduct['result'] as $item) { // Поля данных для заполнения word файла
+                if(!empty($item['PROPERTY_371'])){
+                    $nameDeclaration = reset($item['PROPERTY_371']);
+                } else {
+                    $nameDeclaration = '';
+                }
+                if(!empty($item['PROPERTY_373'])){
+                    $nameProduction = reset($item['PROPERTY_373']);
+                } else {
+                    $nameProduction = '';
+                }
+                if(!empty($item['PROPERTY_375'])){
+                    $codeTnVedEaeu = reset($item['PROPERTY_375']);
+                } else {
+                    $codeTnVedEaeu = '';
+                }
+                if(!empty($item['PROPERTY_377'])){
+                    $ProductReleaseDoc = reset($item['PROPERTY_377']);
+                } else {
+                    $ProductReleaseDoc = '';
+                }
+
+                $listElements[] = [
+                    $nameDeclaration,
+                    $nameProduction,
+                    $codeTnVedEaeu,
+                    $ProductReleaseDoc,
+                ];
+            }
+
+            $templateProcessor->cloneRow('nameProd', count($listElements));
+
+            foreach ($listElements as $k => $element) {
+                $k2 = $k + 1;
+                $templateProcessor->setValue('nameProd#'.$k2, $element[0]);
+                $templateProcessor->setValue('identificationProd#'.$k2, $element[1]);
+                $templateProcessor->setValue('tnVedEaes#'.$k2, $element[2]);
+                $templateProcessor->setValue('documentationProd#'.$k2, $element[3]);
+            }
+
+            $templateProcessor->saveAs(static::EXPORT_TEMP_FILE);
+            ob_clean();
+            $orderDeals = readfile(static::EXPORT_TEMP_FILE);
+            $r = ob_get_clean();
+            unlink(static::EXPORT_TEMP_FILE);
+            header("Content-Length:" . $orderDeals);
+            ob_clean();
+            echo $r;
+            ob_end_flush();
+        }
+        return json_encode(['status'=>true]);
+    }
+
+    public static function exportWordFactoryAddress(): string
+    {
+        $date = date("d.m.y");
+        header("Cache-Control: public"); // needed for internet explorer
+        header("Content-Type: application/vnd.ms-excel");
+        header("Content-Transfer-Encoding: Binary");
+        header("Content-Disposition: attachment; filename=Адрес предприятия-".$date.".docx");
+        ob_start();
+
+        $document_id = $_REQUEST['doc_id'] ?? 0; // получили номер документа
+
+        $listProduct = CRest::callList('lists.element.get',[
+            'IBLOCK_TYPE_ID'=>'lists',
+            'IBLOCK_ID'=>103, // Строки приложения с адресами предприятий
+            'FILTER' => [
+                '=PROPERTY_385' => $document_id,
+            ]
+        ]);
+
+        // Получили идентификатор смарт-процесса и id документа
+        $result = CRest::call(
+            'crm.item.get',
+            [
+                'entityTypeId' => static::DECLARATION_ENTITY_TYPE_ID,
+                'id' => $document_id,
+            ]
+        );
+
+        CRest::setLog([
+            '$result' => $result,
+        ], '$result-----1-----');
+
+        // Получаем реквизиты
+        $company = $result['result']['item']['mycompanyId'];
+
+        CRest::setLog([
+            '$company' => $company,
+        ], '$company-----1-----');
+
+        $result = CRest::call(
+            'crm.requisite.list',
+            [
+                'order' => ['ID' => 'ASC'],
+                'filter' =>
+                    [
+                        'ENTITY_TYPE_ID' => 4,
+                        'ENTITY_ID' => $company,
+                    ],
+                'select' => ['*', 'UF_*']
+            ]
+        );
+
+        CRest::setLog([
+            '$result' => $result,
+        ], '$result-----1-----');
+
+        $CompanyRequisiteUfCrm1675166054 = '';
+        $CompanyRequisiteUfCrm1683443820 = '';
+        foreach ($result['result'] as $k => $value) {
+            if (!in_array($result['result'][$k]['UF_CRM_1675166054'], [NULL, ''], true)) {
+                $CompanyRequisiteUfCrm1675166054 = $result['result'][$k]['UF_CRM_1675166054'];
+            }
+            elseif (!in_array($result['result'][$k]['UF_CRM_1683443820'], [NULL, ''], true)) {
+                $CompanyRequisiteUfCrm1683443820 = $result['result'][$k]['UF_CRM_1683443820'];
+            }
+            if(!empty($CompanyRequisiteUfCrm1675166054) || !empty($CompanyRequisiteUfCrm1683443820)) {
+                break;
+            }
+        }
+
+        if (!empty($_SERVER['REQUEST_METHOD'] === 'POST')) {
+            $source = __DIR__ . '/factoryAddress.docx';
+            $templateProcessor = new TemplateProcessor($source);
+            $templateProcessor->setValue('serverName', realpath(__DIR__));
+            $templateProcessor->setValue('CompanyRequisiteUfCrm1675166054', $CompanyRequisiteUfCrm1675166054);
+            $templateProcessor->setValue('CompanyRequisiteUfCrm1683443820', $CompanyRequisiteUfCrm1683443820); //фио директора
+
+            $listElements = [];
+
+            foreach ($listProduct['result'] as $item) { // Поля данных для заполнения word файла
+                if(!empty($item['PROPERTY_381'])){
+                    $nameFactory = reset($item['PROPERTY_381']);
+                } else {
+                    $nameFactory = '';
+                }
+                if(!empty($item['PROPERTY_383'])){
+                    $factoryAddress = reset($item['PROPERTY_383']);
+                } else {
+                    $factoryAddress = '';
+                }
+
+                //$nameArray = reset($item['PROPERTY_379']);
+                $listElements[] = [
+                    $nameFactory, // $codeArray
+                    $factoryAddress,
+                ];
+            }
+            CRest::setLog([
+                '$listElements' => $listElements,
+            ], '$listElements-----1-----');
+
+            $templateProcessor->cloneRow('nameFactory', count($listElements));
+
+            foreach ($listElements as $k => $element) {
+                $k2 = $k + 1;
+                $templateProcessor->setValue('nameFactory#'.$k2, $element[0]);
+                $templateProcessor->setValue('factoryAddress#'.$k2, $element[1]);
+            }
+
+            $templateProcessor->saveAs(static::EXPORT_TEMP_FILE);
+            ob_clean();
+            $orderDeals = readfile(static::EXPORT_TEMP_FILE);
+            $r = ob_get_clean();
+            unlink(static::EXPORT_TEMP_FILE);
+            header("Content-Length:" . $orderDeals);
+            ob_clean();
+            echo $r;
+            ob_end_flush();
+        }
+        return json_encode(['status'=>true]);
+    }
+    public static function process(string $method): string
+    {
+        switch ($method) {
+            case 'exportWordProduct':
+                return static::exportWordProduct();
+            case 'exportWordPlacement':
+                return static::exportWordPlacement();
+            case 'exportWordDeclaration':
+                return static::exportWordDeclaration();
+            case 'exportWordFactoryAddress':
+                return static::exportWordFactoryAddress();
+        }
+        return json_encode(['error'=>true]);
+    }
+}
