@@ -1,0 +1,81 @@
+protected  function  checkDealFinancialInfo(): Result
+	{
+		if (!$this->_checkGetParamDefined('deal', 'Deal ID')) {
+			return $this->result;
+		}
+
+		$infoData = CRest::callBatch([
+										 'account'     => [
+											 'method' => 'crm.item.list',
+											 'params' => [
+												 'entityTypeId' => static::entityTypeIds['Счет'],
+												 'select'       => ['*'],
+												 'filter'       => [
+													 'parentId2' => $this->deal['ID'],
+												 ],
+											 ],
+										 ],
+										 'deal_fields' => [
+											 'method' => 'crm.deal.fields',
+											 'params' => [
+											 ],
+										 ]]);
+
+		//Значение поля инвойс статус для сделки и других полей
+		$invoice_status      = '';
+		$invoice_status_code = $this->deal['UF_CRM_1683187602109'];
+		foreach ($infoData['result']['result']['deal_fields']['UF_CRM_1683187602109']['items'] as $item) {
+			if ($item['ID'] === $invoice_status_code) {
+				$invoice_status = $item['VALUE'];
+			}
+		};
+
+		$invoice = $this->deal['UF_CRM_1683542942'];
+		$invoice_num = $this->deal['UF_CRM_1675157067513'];
+		$invoice_date = $this->deal['UF_CRM_1675157079908'];
+		$invoice_company = $this->deal['UF_CRM_1686146691'];
+
+		//Значение инвойс статус в счёте и других полей
+		$account_invoice = '';
+		$account_invoice_num = '';
+		$account_invoice_date = '';
+		$account_invoice_company = ''; // $this->deal['UF_CRM_1686146691']
+		$account_invoice_status = '';
+		if (isset($infoData['result']['result']['account']['items']) and
+			is_array($infoData['result']['result']['account']['items']) and
+			count($infoData['result']['result']['account']['items']) > 0) {
+			foreach ($infoData['result']['result']['account']['items'] as $item) {
+				if ($item['stageId'] === 'DT31_1:P') {
+					$account_invoice_status = 'Оплачен';
+				} else {
+					$account_invoice_status = 'Выставлен';
+				}
+				$account_invoice = $item['id'];
+				$account_invoice_num = $item['accountNumber'];
+				$account_invoice_date = $item['begindate'];
+				$account_invoice_company = $item['mycompanyId'];
+			}
+		} else {
+			$account_invoice_status = 'Не выставлен';
+		}
+
+		//Проверка полей
+		if ($invoice !== $account_invoice or
+			$invoice_num !== $account_invoice_num or
+			$invoice_date !== $account_invoice_date or
+			$invoice_status !== $account_invoice_status or
+			$invoice_company !== $account_invoice_company) {
+
+			$parameters = [
+				'Parameter1' => $account_invoice_num,
+				'schet_id' => $account_invoice,
+				'schet_date'     => $account_invoice_date,
+				'schet_ul'   => $account_invoice_company,
+				'schet_status'     => $account_invoice_status,
+			];
+
+			Lib::runBizProc('deal', $this->deal_id, static::bp_ids['D'], $parameters);
+
+		}
+		return $this->result->set([]);
+	}
