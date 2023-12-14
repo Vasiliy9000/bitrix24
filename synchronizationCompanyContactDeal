@@ -1,0 +1,48 @@
+protected function synchronizationCompanyContactDeal () {
+        $salesChannel = $this->deal['UF_CRM_64662095EA6FC']; // Поле сделки 'канал продаж'
+        $conversionTool = $this->deal['UF_CRM_6466209613577']; // Поле сделки 'конверсионный инструмент'
+        $creationDate = $this->deal['DATE_CREATE'];
+        $source = $this->deal['SOURCE_ID'];
+        $company = $this->deal['COMPANY_ID']; // Поле сделки 'ID компании'
+        $contact = $this->deal['CONTACT_ID']; // Поле сделки 'ID контакта'
+
+        CRest::setLog([
+            '$source' => $source,
+            '$creationDate' => $creationDate,
+            '$salesChannel'   => $salesChannel,
+            '$conversionTool' => $conversionTool,
+            '$company' => $company,
+            '$contact' => $contact,
+        ], 'synchronizationCompanyContactDeal2');
+
+        if (!empty($company)) {
+            $companyUpd = CRest::call('crm.company.update', [
+                'id' => $company,
+                'fields' => [
+                    'UF_CRM_1684419866' => $salesChannel,
+                    'UF_CRM_1684419906' => $conversionTool,
+                    'UF_CRM_1689264582741' => $creationDate,
+                    'UF_CRM_1669724708' => $source,
+                ],
+            ]);
+        } else {
+            CRest::setLog([
+                '$company' => $company,
+            ], 'NoCompanyId');
+        }
+        if (!empty($contact)) {
+            $companyUpd = CRest::call('crm.contact.update', [
+                'id' => $contact,
+                'fields' => [
+                    'UF_CRM_1684417151' => $salesChannel,
+                    'UF_CRM_1684417191' => $conversionTool,
+                    'UF_CRM_1689264623816' => $creationDate,
+                    'SOURCE_ID' => $source,
+                ],
+            ]);
+        } else {
+            CRest::setLog([
+                '$contact' => $contact,
+            ], 'NoContactId');
+        }
+    }
