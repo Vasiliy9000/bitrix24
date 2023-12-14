@@ -1,0 +1,183 @@
+<?php
+
+namespace Advina\Bitrix\Service;
+
+use Advina\CRest;
+use Advina\Gate\Ajax;
+use Advina\Gate\Result;
+use Advina\Lib;
+use Advina\SUtils;
+use Bitrix\Iblock\Elements\ElementChatbotOLTable;
+use Bitrix\Main\Entity\DataManager;
+use Bitrix\Main\Loader;
+use DateInterval;
+use DateTime;
+use stdClass;
+use Bitrix\Highloadblock as HL;
+
+class Warming extends Base
+{
+    /**
+     * Список методов обработчика.
+     *
+     * @var array
+     */
+    protected const METHODS = [
+        'goToWarm'                    => 'goToWarm',
+        'goToSale'                    => 'goToSale',
+        'deDuplicator'                => 'deDuplicator',
+        'ElementChatbotOLTable'       => 'ElementChatbotOLTable',
+    ];
+    protected const QUEUE_ID = 18; // id открытой линии
+    protected const SAVED_CATEGORY_FIELD = 'UF_CRM_1685358723';
+    protected const ARCHIVIST_ID = 20634; // id Архивариуса
+
+    protected function goToWarm(): Result
+    {
+        if (!$this->_checkGetParamDefined('deal', 'Deal')) {
+            return $this->result;
+        }
+
+        CRest::call('crm.deal.update', [ // может перенести вниз?
+            'id' => $this->deal_id,
+            'fields' => [
+                self::SAVED_CATEGORY_FIELD => $this->deal['CATEGORY_ID'], // 12 воронка прогрев ?
+            ],
+            'params' => [
+                'REGISTER_SONET_EVENT' => 'N',
+            ]
+        ]); // переместим сделку в воронку прогрева
+
+        Lib::runBizProc('deal', $this->deal_id, 202);
+        Loader::includeModule('iblock');
+
+        if (isset($this->deal_id)) {
+             CRest::call('crm.activity.list', [ // находим открытые чаты и их id
+                'order' => ["ID", "DESC"], // ASC
+                'filter' => [
+                    'OWNER_TYPE_ID' => 2,// 2 это deal
+                    'OWNER_ID' => $this->deal_id,
+                    'COMPLETED' => 'N', // ищем сразу по НЕ закрытым чатам
+                ],
+                'select' => ['*', 'COMMUNICATIONS'] // 'COMMUNICATIONS' дополнительно к * указывается
+            ]);
+
+            $dialogs = ElementChatbotOLTable::getList([ // поднимает список всех диалогов из архивариуса
+                'select' => [
+                    'ID',
+                    'IBLOCK_ID',
+                    'NAME',
+                    'dialog_id_' => 'dialog_id',
+                    'contact_id_' => 'contact_id',
+                    'deal_id_' => 'deal_id',
+                ],
+                'filter' => [
+                    'contact_id.value' => $this->contact['ID'],
+                ]
+            ])->fetchAll();
+
+            foreach ($dialogs as $key => $value) {  // поищем ошибку CRM_CHAT_EMPTY_CRM_DATA
+                $wrongDeal[] = CRest::call('imopenlines.crm.chat.getLastId', [
+                    'CRM_ENTITY_TYPE' => 'DEAL',
+                    'CRM_ENTITY' => $value['deal_id_VALUE'],
+                ]);
+            }
+
+            foreach ($wrongDeal as $key => $value) { // сделаем массив со сделками без ошибок
+                if (!$value['error']) {
+                    $chatToWrite = $value;
+                    break;
+                }
+            }
+
+            $userName = CRest::call('imopenlines.dialog.get', [ // получаем имя
+                'DIALOG_ID' => $dialogs[0]['dialog_id_VALUE'],
+            ]);
+
+            CRest::call('imopenlines.session.join', [ // для добавления архивариуса в чат
+                'CHAT_ID' => $chatToWrite['result'],
+            ]);
+
+            CRest::call('im.chat.user.add', [ // добавляем архивариуса
+                'CHAT_ID' => $chatToWrite['result'],
+                'USERS' => self::ARCHIVIST_ID,
+                'HIDE_HISTORY' => 'N',
+            ]);
+
+            CRest::call('imbot.message.add', [
+                'DIALOG_ID' => 'chat' . $chatToWrite['result'],  // используем ключ для написания в последний открытый чат
+                'MESSAGE' => 'Здравствуйте, ' . $userName['result']['readed_list']['0']['user_name'] . '. Видим, что Вы интересовались стоимостью товара и хотели совершить заказ. Как насчет того, чтобы оформить заказ прямо сейчас? 😊',
+                'SYSTEM' => 'N',
+            ]);
+
+            foreach ($dialogs as $key => $valueTwo) {                               // пробежимся по диалогам
+                CRest::call('imopenlines.operator.transfer', [               // передадим все диалоги на оператора
+                    'CHAT_ID' => substr($dialogs[$key]['dialog_id_VALUE'],4), // Идентификатор диалога; это либо USER_ID пользователя, либо chatXX - где XX идентификатор чата, передается в событии ONIMBOTMESSAGEADD и ONIMJOINCHAT
+                    'TRANSFER_ID' => 'queue' . self::QUEUE_ID,
+                    'SYSTEM' => 'N',
+                ]);
+            }
+        }
+        return $this->result->set([]);
+    }
+    protected function goToSale(): Result
+    {
+        $QUEUE_IDS = [
+            '0' => '12',
+            '2' => '6',
+            '4' => '6',
+        ];
+
+        if (!$this->_checkGetParamDefined('deal', 'Deal')) {
+            return $this->result;
+        }
+
+        Lib::runBizProc('deal', $this->deal_id, 204);
+        Loader::includeModule('iblock');
+
+        $dialogs = ElementChatbotOLTable::getList([
+            'select' => [
+                'ID',
+                'IBLOCK_ID',
+                'NAME',
+                'dialog_id_' => 'dialog_id',
+                'contact_id_' => 'contact_id',
+                'deal_id_' => 'deal_id',
+            ],
+            'filter' => [
+                'DEAL_ID.VALUE' => $this->deal_id,
+            ]
+        ])->fetchAll();
+
+        if (isset($QUEUE_IDS[$this->deal[self::SAVED_CATEGORY_FIELD]])) {
+            foreach ($dialogs as $dialog) {
+                $dialogCut = $dialog['dialog_id_VALUE'];
+                $dialogCut = substr($dialogCut, 4);
+                $result = CRest::call('imopenlines.operator.transfer', array(
+                    'CHAT_ID' => $dialogCut,
+                    'TRANSFER_ID' => 'queue' . $QUEUE_IDS[$this->deal[self::SAVED_CATEGORY_FIELD]],
+                ));
+            }
+        }
+        return $this->result->set([]);
+    }
+    protected function deDuplicator(): Result {
+
+        $result[] = CRest::call('crm.duplicate.volatileType.register', [
+            'entityTypeId' => 3,
+            'fieldCode' => 'UF_CRM_1694594366489',
+        ]);
+
+        $result[] = CRest::call('crm.duplicate.volatileType.list', [
+            'entityTypeId' => 3,
+            'fieldCode' => 'UF_CRM_1694594366489',
+        ]);
+
+        $result[] = CRest::call('crm.duplicate.volatileType.fields', [
+            'entityTypeId' => 3,
+            'fieldCode' => 'UF_CRM_1694594366489',
+        ]);
+
+        return $this->result->set([]);
+    }
+}
