@@ -1,0 +1,54 @@
+<!DOCTYPE HTML>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>Работа с базой данных</title>
+    </head>
+<body>
+    <form action="https://testl.seolit.ru/forcron/testing/dbHandler.php" method="post">
+        <p>
+            <b> Вводим данные почты </b>
+        </p>
+        <p>
+            <label>
+                <textarea name="mails" rows="20" cols="40" ><?= $_POST["mails"]?></textarea>
+            </label>
+        <p>
+            <input type="submit"></p>
+    </form>
+</body>
+</html>
+
+<?php
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    $mails = $_POST["mails"];
+    //$mails = '<pre>' . var_export(explode("\n", $mails), true) . '</pre>';
+    $mails = explode("\n", $mails);
+
+    $database = '';
+    $user = '';
+    $password = '';
+    $db = ibase_connect($database, $user, $password,'UTF8');
+    if ($db === false) echo "no connect";
+    echo '<pre>'.var_export($db, true).'</pre>';
+
+    foreach ($mails as $value) {
+        // echo '<pre>1</pre>';
+        $tr = ibase_trans(IBASE_READ, $db);
+        // echo '<pre>2</pre>';
+        $result = ibase_query('select count(*) from test_users where email=\''.trim($value)."'");
+        if($result !== false) {
+            $row = ibase_fetch_row($result);
+            ibase_commit($tr);
+            // echo '<pre>3</pre>';
+        }
+        else {
+            ibase_rollback($tr);
+            // echo '<pre>4</pre>';
+        }
+        echo '<pre>'.var_export(trim($value), true).'</pre>';
+        echo '<pre>'.var_export($row, true).'</pre>';
+    };
+
+    ibase_close($db);
+}
