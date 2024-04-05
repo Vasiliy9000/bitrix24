@@ -1,0 +1,24 @@
+
+    protected function callList($method, $params = [])
+    {
+        $result = CRest::call($method, $params);
+        if (!empty($result['error'])) {
+            return $result;
+        }
+        if (!empty($result['next'])) {
+            $next = $result['next'];
+            while (!empty($next)) {
+                $params['start'] = $next;
+                $result1         = CRest::call($method, $params);
+                if (!empty($result1['error'])) {
+                    return $result;
+                }
+                $result['result'] = array_merge($result['result'], $result1['result']);
+                $next             = $result1['next'] ?? 0;
+
+                usleep(500000);
+            }
+        }
+
+        return $result;
+    }
